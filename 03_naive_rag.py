@@ -61,11 +61,36 @@ class NaiveRAGEngine:
         return dot / (mag1 * mag2) if mag1 * mag2 else 0
 
     def query(self, user_question: str) -> str:
+        print(f"\n[DEBUG] Question: {user_question}")
         query_emb = self._get_embedding(user_question)
-        sims = sorted([(self._cosine_similarity(query_emb, e), c) for e, c in zip(self.embeddings, self.chunks)], reverse=True)
+        
+        # Calculate similarities and keep scores for debugging
+        raw_sims = []
+        for e, c in zip(self.embeddings, self.chunks):
+            score = self._cosine_similarity(query_emb, e)
+            raw_sims.append((score, c))
+        
+        # Sort and take top 3
+        sims = sorted(raw_sims, key=lambda x: x[0], reverse=True)
+        
+        print("[DEBUG] Top 3 Retrieved Chunks & Scores:")
+        for i, (score, chunk) in enumerate(sims[:3]):
+            print(f"  {i+1}. Score: {score:.4f} | Content: {chunk[:100]}...")
+
         context = "\n".join([s[1] for s in sims[:3]])
         
-        prompt = f"Context:\n{context}\n\nQuestion: {user_question}\nAnswer strictly based on context. If unknown, say I don't know."
+        prompt = f"""Use the following context to answer the question.
+Context:
+{context}
+
+Question: {user_question}
+
+Answer strictly based on the context. If the information is not there, say "I don't know".
+"""
+        print("-" * 50)
+        print("[DEBUG] Prompt being sent to LLM:")
+        print(prompt)
+        print("-" * 50)
         
         if self.provider == "ollama":
             response = ollama.chat(model=self.model, messages=[{'role': 'user', 'content': prompt}])
