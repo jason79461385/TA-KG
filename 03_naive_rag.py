@@ -29,18 +29,30 @@ class NaiveRAGEngine:
     def _get_embedding(self, text: str) -> List[float]:
         try:
             if self.provider == "ollama":
-                response = ollama.embeddings(model=self.emb_model, prompt=text)
+                try:
+                    response = ollama.embeddings(model=self.emb_model, prompt=text)
+                except Exception:
+                    print(f"Pulling embedding model {self.emb_model}...")
+                    ollama.pull(self.emb_model)
+                    response = ollama.embeddings(model=self.emb_model, prompt=text)
                 return response['embedding']
             else:
                 client = OpenAI()
                 response = client.embeddings.create(input=[text], model=self.emb_model)
                 return response.data[0].embedding
-        except Exception:
-            return [0.0] * 384 # Minimal fallback
+        except Exception as e:
+            print(f"Warning: Embedding failed: {e}")
+            return [] # Empty list to avoid math errors
 
     def _create_embeddings(self):
+        print(f"Generating embeddings for {len(self.chunks)} chunks using {self.emb_model}...")
         for chunk in self.chunks:
-            self.embeddings.append(self._get_embedding(chunk))
+            emb = self._get_embedding(chunk)
+            if emb:
+                self.embeddings.append(emb)
+            else:
+                # Even if one fails, we need a placeholder to keep list indices aligned
+                self.embeddings.append([0.0] * 384) 
 
     def _cosine_similarity(self, v1, v2):
         dot = sum(a * b for a, b in zip(v1, v2))
