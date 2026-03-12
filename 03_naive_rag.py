@@ -1,0 +1,68 @@
+import os
+import math
+from typing import List
+import ollama
+from openai import OpenAI
+import config
+
+class NaiveRAGEngine:
+    def __init__(self):
+        self.provider = config.LLM_PROVIDER
+        self.model = config.LLM_MODEL
+        self.emb_model = config.EMBEDDING_MODEL
+        self.chunks = []
+        self.embeddings = []
+        self._load_data()
+
+    def _load_data(self):
+        filepath = "sample_data.txt"
+        if not os.path.exists(filepath):
+            with open(filepath, "w") as f:
+                f.write("The Matrix stars Keanu Reeves.\nTom Hanks acted in Cast Away.")
+        
+        with open(filepath, "r") as f:
+            text = f.read()
+        
+        self.chunks = [line.strip() for line in text.split("\n") if line.strip()]
+        self._create_embeddings()
+
+    def _get_embedding(self, text: str) -> List[float]:
+        try:
+            if self.provider == "ollama":
+                response = ollama.embeddings(model=self.emb_model, prompt=text)
+                return response['embedding']
+            else:
+                client = OpenAI()
+                response = client.embeddings.create(input=[text], model=self.emb_model)
+                return response.data[0].embedding
+        except Exception:
+            return [0.0] * 384 # Minimal fallback
+
+    def _create_embeddings(self):
+        for chunk in self.chunks:
+            self.embeddings.append(self._get_embedding(chunk))
+
+    def _cosine_similarity(self, v1, v2):
+        dot = sum(a * b for a, b in zip(v1, v2))
+        mag1 = math.sqrt(sum(a * a for a in v1))
+        mag2 = math.sqrt(sum(b * b for b in v2))
+        return dot / (mag1 * mag2) if mag1 * mag2 else 0
+
+    def query(self, user_question: str) -> str:
+        query_emb = self._get_embedding(user_question)
+        sims = sorted([(self._cosine_similarity(query_emb, e), c) for e, c in zip(self.embeddings, self.chunks)], reverse=True)
+        context = "\n".join([s[1] for s in sims[:3]])
+        
+        prompt = f"Context:\n{context}\n\nQuestion: {user_question}\nAnswer strictly based on context. If unknown, say I don't know."
+        
+        if self.provider == "ollama":
+            response = ollama.chat(model=self.model, messages=[{'role': 'user', 'content': prompt}])
+            return response['message']['content']
+        else:
+            client = OpenAI()
+            response = client.chat.completions.create(model=self.model, messages=[{"role": "user", "content": prompt}])
+            return response.choices[0].message.content
+
+if __name__ == "__main__":
+    engine = NaiveRAGEngine()
+    print(engine.query("Who is Keanu Reeves?"))
