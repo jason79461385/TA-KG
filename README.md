@@ -38,7 +38,7 @@ graph TD
 
 ### 1. Requirements
 - **Docker Desktop** (for Neo4j)
-- **Ollama** (for local Llama 3.2 + all-minilm embeddings) or **OpenAI API Key**.
+- **Ollama** (for local Llama 3.2 + all-minilm embeddings).
 
 ### 2. Setup Environment
 Ensure your `.env` is configured (or use `config.py` defaults):
